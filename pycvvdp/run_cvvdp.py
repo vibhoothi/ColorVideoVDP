@@ -23,13 +23,13 @@ import pycvvdp.utils as utils
 
 from pycvvdp.ssim_metric import ssim_metric
 from pycvvdp.dm_preview import dm_preview_metric
-
 def expand_wildcards(filestrs):
     if not isinstance(filestrs, list):
         return [ filestrs ]
     files = []
     for filestr in filestrs:
         if "*" in filestr:
+            filestr = filestr.replace('\\','')
             curlist = glob.glob(filestr)
             # Sort the files before feeding since glob is returing arbitary
             # order, thus it can be actually comparing frame 2 with frame 80.
@@ -91,6 +91,7 @@ def parse_args(arg_list=None):
     parser.add_argument("-x", "--features", action='store_true', default=False, help="generate JSON files with extracted features. Useful for retraining the metric.")
     parser.add_argument("-s", "--save", action='store_true', default=True, help="generate CSV data of metrics which is computed.")
     parser.add_argument("-o", "--output-dir", type=str, default=None, help="in which directory heatmaps and feature files should be stored (the default is the current directory)")
+    parser.add_argument("--csv-output", type=str, default=None, help="path of csv file")
     parser.add_argument("-c", "--config-paths", type=str, nargs='+', default=[], help="One or more paths to configuration files or directories. The main configurations files are `display_models.json`, `color_spaces.json` and `cvvdp_parameters.json`. The file name must start as the name of the original config file.")
     parser.add_argument("-d", "--display", type=str, default="standard_4k", help="display name, e.g. 'HTC Vive', or ? to print the list of models.")
     parser.add_argument("-n", "--nframes", type=int, default=-1, help="the number of video frames you want to compare")
@@ -147,6 +148,11 @@ def run_on_args(args):
         if args.device != 'cpu':
             logging.warning(f'The requested device ({args.device}) is not found, reverting to CPU. This may result in slow execution.')
         device = torch.device('cpu')
+        # Limit to 1 core
+        # Set the number of threads used for intra-op parallelism to 1
+        torch.set_num_threads(1)
+        # Set the number of threads used for inter-op parallelism to 1
+        torch.set_num_interop_threads(1)
 
     logging.info("Running on device: " + str(device))
 
@@ -241,7 +247,7 @@ def run_on_args(args):
                 metrics_data[this_metric.short_name()] = []
 
 
-    for kk in range( max(N_test, N_ref) ): # For each test and reference pair
+    for kk in range( min(N_test, N_ref) ): # For each test and reference pair
         test_file = args.test[min(kk,N_test-1)]
         ref_file = args.ref[min(kk,N_ref-1)]
         logging.info(f"Predicting the quality of '{test_file}' compared to '{ref_file}'")
@@ -264,7 +270,8 @@ def run_on_args(args):
 
                 Q_pred, stats = mm.predict_video_source(vs)
                 if args.quiet:
-                    print( "{Q:0.4f}".format(Q=Q_pred) )
+                    pass
+#                    print( "{Q:0.4f}".format(Q=Q_pred) )
                 else:
                     units_str = f" [{mm.quality_unit()}]"
                     print( "{met_name}={Q:0.4f}{units}".format(met_name=mm.short_name(), Q=Q_pred, units=units_str) )
@@ -305,6 +312,8 @@ def run_on_args(args):
     # TODO: Support saving to JSON and XML
     if args.save:
         dest_name = os.path.join(out_dir, base + "_metrics.csv")
+        if args.csv_output:
+            dest_name = args.csv_output
         metrics_data = pd.DataFrame(metrics_data)
         metrics_data.insert(0, 'Frame Number', range(len(metrics_data)))
         metrics_data.to_csv(dest_name, index=False, float_format='%.6f')
