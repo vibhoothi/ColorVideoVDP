@@ -70,7 +70,7 @@ class video_reader:
 
     def __init__(self, vidfile, frames=-1, resize_fn=None, resize_height=-1, resize_width=-1, verbose=False):
         try:
-            probe = ffmpeg.probe(vidfile)
+            probe = ffmpeg.probe(vidfile, count_frames=None)
         except:
             raise RuntimeError("ffmpeg failed to open file \"" + vidfile + "\"")
 
@@ -84,7 +84,7 @@ class video_reader:
         self.color_space = video_stream['color_space'] if ('color_space' in video_stream) else 'unknown'
         self.color_transfer = video_stream['color_transfer'] if ('color_transfer' in video_stream) else 'unknown'
         self.in_pix_fmt = video_stream['pix_fmt']
-        num_frames = int(video_stream['nb_frames'])
+        num_frames = int(video_stream['nb_read_frames'])
         avg_fps_num, avg_fps_denom = [float(x) for x in video_stream['r_frame_rate'].split("/")]
         self.avg_fps = avg_fps_num/avg_fps_denom
 
